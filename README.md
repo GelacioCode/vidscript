@@ -64,7 +64,47 @@ docker compose up -d --build
 curl http://127.0.0.1:8010/api/health     # {"ok":true,...,"model_loaded":true} once ready
 ```
 
-### 3. nginx site + password
+### 3a. Behind Caddy running in Docker (what samuelgelacio.io uses)
+
+The Caddy container (`paint-rush-caddy-1`) reads its config from `/opt/paint-rush/deploy/Caddyfile` (mounted read-only), so edit that file on the host.
+
+```bash
+# Put vidscript on Caddy's Docker network (in /opt/vidscript)
+NET=$(docker inspect paint-rush-caddy-1 --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' | awk '{print $1}')
+cat > docker-compose.override.yml <<EOF2
+services:
+  vidscript:
+    networks: [default, caddy]
+networks:
+  caddy:
+    external: true
+    name: $NET
+EOF2
+docker compose up -d
+
+# Password hash + site block
+HASH=$(docker exec paint-rush-caddy-1 caddy hash-password --plaintext 'CHOOSE-A-PASSWORD')
+cat >> /opt/paint-rush/deploy/Caddyfile <<EOF2
+
+vidscript.samuelgelacio.io {
+	encode zstd gzip
+	basic_auth {
+		samuel $HASH
+	}
+	reverse_proxy vidscript:8000 {
+		transport http {
+			read_timeout 10m
+			write_timeout 10m
+		}
+	}
+}
+EOF2
+docker exec paint-rush-caddy-1 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker exec paint-rush-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+```
+Caddy fetches the HTTPS certificate on its own. Append with `cat >>` (or edit in place); editors that replace the file can leave the container seeing the old copy, in which case `docker restart paint-rush-caddy-1`.
+
+### 3b. Or: nginx site + password
 ```bash
 sudo cp deploy/nginx/vidscript.samuelgelacio.io.conf /etc/nginx/sites-available/
 sudo ln -s /etc/nginx/sites-available/vidscript.samuelgelacio.io.conf /etc/nginx/sites-enabled/
@@ -75,7 +115,7 @@ sudo htpasswd -c /etc/nginx/.htpasswd-vidscript samuel    # add more users witho
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### 4. HTTPS
+### 4. HTTPS (nginx only)
 ```bash
 sudo certbot --nginx -d vidscript.samuelgelacio.io
 ```
@@ -98,6 +138,7 @@ Set these in `.env` (read by `docker-compose.yml`), then run `docker compose up 
 | `MAX_CONCURRENT_JOBS` | `1` | Jobs transcribed at once. Keep 1 on 2 vCPU |
 | `MAX_QUEUED_JOBS` | `10` | Further uploads get a "server busy" message |
 | `RESULT_TTL_SECONDS` | `3600` | How long a finished transcript stays available |
+| `CHUNK_SECONDS` | `600` | Long audio is transcribed in pieces this long, cut at the quietest moment, to keep memory flat |
 | `APP_PORT` | `8010` | Local port. Must match `proxy_pass` in the nginx conf |
 | `MEM_LIMIT` | `2g` | Container memory cap |
 
@@ -111,7 +152,7 @@ Set these in `.env` (read by `docker-compose.yml`), then run `docker compose up 
 | `medium` | ~2.5 GB | slow | very good |
 | `large-v3` | ~4.5 GB | very slow on CPU | best. Really needs a GPU |
 
-Long videos also need memory for the decoded audio (about 64 MB per 15 minutes), so leave some headroom under `MEM_LIMIT`.
+Audio is transcribed in 10-minute chunks, so memory stays roughly flat regardless of video length (a 51-minute recording peaked around 830 MB with `base`). Without chunking, faster-whisper builds features for the whole file at once, which pushed a 51-minute meeting past 2 GB and got the container killed.
 
 ## API
 

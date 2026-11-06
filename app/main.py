@@ -44,6 +44,9 @@ MAX_CONCURRENT_JOBS = max(1, _env_int("MAX_CONCURRENT_JOBS", 1))
 MAX_QUEUED_JOBS = max(1, _env_int("MAX_QUEUED_JOBS", 10))
 RESULT_TTL_SECONDS = _env_int("RESULT_TTL_SECONDS", 3600)
 FFMPEG_TIMEOUT_SECONDS = _env_int("FFMPEG_TIMEOUT_SECONDS", 1800)
+# Long recordings are transcribed in pieces of about this length to cap memory use.
+CHUNK_SECONDS = max(60, _env_int("CHUNK_SECONDS", 600))
+SAMPLE_RATE = 16000
 
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 STATIC_DIR = Path(__file__).parent / "static"
@@ -98,9 +101,11 @@ def _update(job_id: str, **fields) -> bool:
 
 
 def _load_pcm_wav(path: Path):
-    """Read the 16 kHz mono s16le WAV that ffmpeg produced as float32 samples.
+    """Read the 16 kHz mono s16le WAV that ffmpeg produced as int16 samples.
 
-    Passing an array to faster-whisper skips its PyAV-based decoder entirely.
+    We hand faster-whisper arrays (not files), which skips its PyAV decoder.
+    int16 keeps a 1-hour recording at ~115 MB; chunks are converted to float32
+    one at a time.
     """
     import wave
 
@@ -108,7 +113,30 @@ def _load_pcm_wav(path: Path):
 
     with wave.open(str(path), "rb") as w:
         frames = w.readframes(w.getnframes())
-    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+    return np.frombuffer(frames, dtype=np.int16)
+
+
+def _chunk_bounds(samples) -> list[tuple[int, int]]:
+    """Split audio into ~CHUNK_SECONDS pieces, cutting at the quietest half
+    second within the last 30 s of each piece so words aren't split."""
+    import numpy as np
+
+    n = len(samples)
+    chunk = CHUNK_SECONDS * SAMPLE_RATE
+    search = 30 * SAMPLE_RATE
+    win = SAMPLE_RATE // 2
+    bounds, pos = [], 0
+    # Don't leave a tiny tail: only cut if more than a minute would remain.
+    while n - pos > chunk + 60 * SAMPLE_RATE:
+        target = pos + chunk
+        region = samples[target - search:target].astype(np.float32)
+        k = len(region) // win
+        energy = (region[: k * win].reshape(k, win) ** 2).mean(axis=1)
+        cut = target - search + int(np.argmin(energy)) * win + win // 2
+        bounds.append((pos, cut))
+        pos = cut
+    bounds.append((pos, n))
+    return bounds
 
 
 def _process(job_id: str) -> None:
@@ -147,34 +175,56 @@ def _process(job_id: str) -> None:
             log.warning("Job %s: ffmpeg failed: %s", job_id, (proc.stderr or "").strip()[-500:])
             raise JobError("Couldn't find an audio track in this file. Is it a video with sound?")
 
-        # 2. Load the audio into memory and delete it from disk too.
-        audio = _load_pcm_wav(audio_path)
+        # 2. Load the audio (as compact int16) and delete it from disk too.
+        samples = _load_pcm_wav(audio_path)
         audio_path.unlink(missing_ok=True)
-
-        # 3. Transcribe, streaming segments into the job as they arrive.
-        if not _update(job_id, status="transcribing", progress=0.0):
+        duration = len(samples) / SAMPLE_RATE
+        if not _update(job_id, status="transcribing", progress=0.0, duration=round(duration, 2)):
             return
+
+        # 3. Transcribe chunk by chunk. faster-whisper computes features for the
+        #    whole input at once, so one long array can need several GB of RAM.
         model = get_model()
-        segments_iter, info = model.transcribe(
-            audio,
-            language=language,
-            beam_size=5,
-            vad_filter=True,
-        )
-        duration = float(info.duration or 0)
-        if not _update(job_id, language=info.language, duration=round(duration, 2)):
-            return
-
-        for seg in segments_iter:
-            text = seg.text.strip()
-            with JOBS_LOCK:
-                job = JOBS.get(job_id)
-                if job is None:  # cancelled mid-transcription
+        prompt = None
+        for start, end in _chunk_bounds(samples):
+            offset = start / SAMPLE_RATE
+            audio = samples[start:end].astype("float32") / 32768.0
+            segments_iter, info = model.transcribe(
+                audio,
+                language=language,
+                beam_size=5,
+                vad_filter=True,
+                initial_prompt=prompt,
+            )
+            if language is None:
+                # Lock in the language detected on the first chunk.
+                language = info.language
+                if not _update(job_id, language=language):
                     return
+
+            chunk_text = []
+            for seg in segments_iter:
+                text = seg.text.strip()
+                with JOBS_LOCK:
+                    job = JOBS.get(job_id)
+                    if job is None:  # cancelled mid-transcription
+                        return
+                    if text:
+                        job["segments"].append({
+                            "start": round(offset + seg.start, 2),
+                            "end": round(offset + seg.end, 2),
+                            "text": text,
+                        })
+                    if duration:
+                        job["progress"] = min((offset + seg.end) / duration, 1.0)
                 if text:
-                    job["segments"].append({"start": round(seg.start, 2), "end": round(seg.end, 2), "text": text})
-                if duration:
-                    job["progress"] = min(seg.end / duration, 1.0)
+                    chunk_text.append(text)
+
+            # Carry the tail of this chunk into the next one for continuity.
+            prompt = " ".join(chunk_text)[-200:] or None
+            del audio
+            if not _update(job_id, progress=min(end / len(samples), 1.0)):
+                return
 
         _update(job_id, status="done", progress=1.0, finished_at=time.time())
         log.info("Job %s: done (%.0fs of audio)", job_id, duration)

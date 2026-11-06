@@ -7,3 +7,4 @@ venv/
 .idea/
 .DS_Store
 Thumbs.db
+docker-compose.override.yml

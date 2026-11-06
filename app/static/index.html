@@ -273,7 +273,7 @@
 
   function reset() {
     clearTimeout(state.pollTimer);
-    state.jobId = null; state.segments = []; state.xhr = null;
+    state.jobId = null; state.segments = []; state.xhr = null; state.wasRunning = false;
     store.set(null);
     $('#file').value = '';
     $('#p-preview').hidden = true;
@@ -338,7 +338,13 @@
     let job;
     try {
       const r = await fetch('/api/jobs/' + id, { cache: 'no-store' });
-      if (r.status === 404) { reset(); return showUploadError('That transcript has expired or was removed.'); }
+      if (r.status === 404) {
+        const wasRunning = state.wasRunning;
+        reset();
+        return showUploadError(wasRunning
+          ? 'Processing was interrupted because the server restarted. Please upload the video again.'
+          : 'That transcript has expired or was removed.');
+      }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       job = await r.json();
     } catch {
@@ -348,6 +354,7 @@
     if (state.jobId !== id) return; // cancelled meanwhile
 
     state.filename = job.filename;
+    state.wasRunning = job.status !== 'done' && job.status !== 'error';
     $('#p-file').textContent = job.filename;
 
     switch (job.status) {
