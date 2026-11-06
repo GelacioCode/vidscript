@@ -1,0 +1,6 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+faster-whisper==1.1.1
+# faster-whisper 1.1.x imports requests and expects the pre-1.0 huggingface_hub API
+huggingface_hub>=0.23,<1.0
+requests>=2.31

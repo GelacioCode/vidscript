@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VidScript</title>
+<meta name="description" content="Upload a video, get a copyable transcript. Videos are deleted right after processing.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><path d='M9 11h14M9 16h14M9 21h9' stroke='white' stroke-width='2.5' stroke-linecap='round'/></svg>">
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --surface: #ffffff;
+    --surface-2: #f1f3f9;
+    --border: #e2e5ef;
+    --text: #151826;
+    --muted: #5d6478;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-soft: #eef0ff;
+    --danger: #c0352b;
+    --danger-soft: #fdeeed;
+    --success: #18794e;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(20, 24, 40, .04), 0 8px 24px rgba(20, 24, 40, .06);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1016;
+      --surface: #171a23;
+      --surface-2: #1e222d;
+      --border: #2a2f3c;
+      --text: #e9ebf2;
+      --muted: #9aa1b4;
+      --accent: #8b85ff;
+      --accent-hover: #a29dff;
+      --accent-soft: #23234a;
+      --danger: #ff8a80;
+      --danger-soft: #3a1f1f;
+      --success: #5fd49a;
+      --shadow: none;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1016; --surface: #171a23; --surface-2: #1e222d; --border: #2a2f3c;
+    --text: #e9ebf2; --muted: #9aa1b4; --accent: #8b85ff; --accent-hover: #a29dff;
+    --accent-soft: #23234a; --danger: #ff8a80; --danger-soft: #3a1f1f; --success: #5fd49a;
+    --shadow: none; color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 16px 64px; }
+  header { margin-bottom: 28px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.35rem; letter-spacing: -.01em; }
+  .brand svg { flex: none; }
+  header p { margin: 6px 0 0; color: var(--muted); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 24px;
+  }
+  [hidden] { display: none !important; }
+
+  /* Drop zone */
+  .drop {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    gap: 10px; padding: 44px 16px;
+    border: 2px dashed var(--border); border-radius: 12px;
+    background: var(--surface-2);
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: var(--accent-soft); outline: none; }
+  .drop .big { font-weight: 600; font-size: 1.05rem; }
+  .drop .small { color: var(--muted); font-size: .9rem; }
+  .drop svg { color: var(--accent); }
+
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .options { margin-top: 18px; justify-content: space-between; }
+  label.inline { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .92rem; }
+  select {
+    font: inherit; font-size: .92rem; color: var(--text);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+  }
+  .note { color: var(--muted); font-size: .85rem; }
+
+  /* Buttons */
+  button, .btn {
+    font: inherit; font-size: .92rem; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px;
+    border-radius: 9px; padding: 8px 14px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    transition: background .15s, border-color .15s;
+  }
+  button:hover { background: var(--surface-2); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  :root[data-theme="dark"] button.primary { color: #0e1016; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button.primary { color: #0e1016; } }
+  button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  button.ghost:hover { color: var(--text); background: var(--surface-2); }
+  button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Progress */
+  .file { font-weight: 600; word-break: break-all; }
+  .stage { color: var(--muted); margin: 4px 0 14px; font-size: .95rem; }
+  .bar { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .3s ease; }
+  .bar.indeterminate > div { width: 35%; animation: slide 1.3s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(290%); } }
+  @media (prefers-reduced-motion: reduce) { .bar.indeterminate > div { animation: none; width: 100%; opacity: .4; } }
+  .preview {
+    margin-top: 16px; max-height: 180px; overflow-y: auto;
+    padding: 12px 14px; border-radius: 10px; background: var(--surface-2);
+    color: var(--muted); font-size: .92rem; white-space: pre-wrap;
+  }
+  .progress-actions { margin-top: 16px; justify-content: flex-end; }
+
+  /* Result */
+  .result-head { justify-content: space-between; margin-bottom: 12px; }
+  .meta { color: var(--muted); font-size: .88rem; }
+  textarea {
+    width: 100%; min-height: 360px; resize: vertical;
+    font: 15px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  }
+  textarea.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13.5px; }
+  .toolbar { margin-top: 14px; justify-content: space-between; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: .92rem; color: var(--muted); cursor: pointer; user-select: none; }
+  .toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .copied { background: var(--success) !important; border-color: var(--success) !important; color: #fff !important; }
+
+  .error {
+    margin-top: 16px; padding: 12px 14px; border-radius: 10px;
+    background: var(--danger-soft); color: var(--danger); font-size: .95rem;
+  }
+  footer { margin-top: 28px; color: var(--muted); font-size: .85rem; text-align: center; }
+
+  @media (max-width: 560px) {
+    .wrap { padding-top: 28px; }
+    .card { padding: 18px; }
+    textarea { min-height: 300px; }
+    .toolbar > .row { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="currentColor" style="color:var(--accent)"/><path d="M9 11h14M9 16h14M9 21h9" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg>
+      VidScript
+    </div>
+    <p>Upload a video and get a transcript you can copy. Your video is deleted as soon as its audio is extracted.</p>
+  </header>
+
+  <!-- Upload -->
+  <section id="view-upload" class="card">
+    <div id="drop" class="drop" role="button" tabindex="0" aria-label="Choose a video file to transcribe">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M20 16v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3"/></svg>
+      <div class="big">Drop a video here or click to choose</div>
+      <div class="small">MP4, MOV, MKV, WEBM, AVI, or audio files &middot; up to <span id="max-mb">500</span> MB</div>
+    </div>
+    <input id="file" type="file" accept="video/*,audio/*,.mkv,.mov,.m4a" hidden>
+    <div class="row options">
+      <label class="inline" for="lang">Spoken language
+        <select id="lang">
+          <option value="">Auto-detect</option>
+          <option value="en">English</option>
+          <option value="tl">Tagalog / Filipino</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+          <option value="it">Italian</option>
+          <option value="nl">Dutch</option>
+          <option value="id">Indonesian</option>
+          <option value="hi">Hindi</option>
+          <option value="ar">Arabic</option>
+          <option value="ru">Russian</option>
+          <option value="ja">Japanese</option>
+          <option value="ko">Korean</option>
+          <option value="zh">Chinese</option>
+        </select>
+      </label>
+      <span class="note">Picking the language makes results faster and more accurate.</span>
+    </div>
+    <div id="upload-error" class="error" role="alert" hidden></div>
+  </section>
+
+  <!-- Progress -->
+  <section id="view-progress" class="card" hidden>
+    <div id="p-file" class="file"></div>
+    <div id="p-stage" class="stage" aria-live="polite">Starting…</div>
+    <div id="p-bar" class="bar indeterminate"><div></div></div>
+    <div id="p-preview" class="preview" hidden></div>
+    <div class="row progress-actions">
+      <button id="cancel" class="ghost" type="button">Cancel</button>
+    </div>
+  </section>
+
+  <!-- Result -->
+  <section id="view-result" class="card" hidden>
+    <div class="row result-head">
+      <div>
+        <div id="r-file" class="file"></div>
+        <div id="r-meta" class="meta"></div>
+      </div>
+      <button id="copy" class="primary" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+        <span>Copy transcript</span>
+      </button>
+    </div>
+    <textarea id="transcript" spellcheck="false" aria-label="Transcript"></textarea>
+    <div class="row toolbar">
+      <label class="toggle"><input id="ts" type="checkbox"> Show timestamps</label>
+      <div class="row">
+        <button type="button" data-dl="txt">.txt</button>
+        <button type="button" data-dl="srt">.srt</button>
+        <button type="button" data-dl="vtt">.vtt</button>
+        <button id="again" type="button">Transcribe another</button>
+      </div>
+    </div>
+  </section>
+
+  <footer>Transcripts are kept on the server for 1 hour, then deleted. Videos are never stored.</footer>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const STORE_KEY = 'vidscript.jobId';
+  const state = { jobId: null, filename: '', segments: [], xhr: null, pollTimer: null, maxMb: 500 };
+
+  const store = {
+    get() { try { return localStorage.getItem(STORE_KEY); } catch { return null; } },
+    set(v) { try { v ? localStorage.setItem(STORE_KEY, v) : localStorage.removeItem(STORE_KEY); } catch {} },
+  };
+
+  function show(view) {
+    for (const v of ['upload', 'progress', 'result']) $('#view-' + v).hidden = v !== view;
+  }
+
+  function showUploadError(msg) {
+    show('upload');
+    const el = $('#upload-error');
+    el.textContent = msg;
+    el.hidden = !msg;
+  }
+
+  function setProgress(fraction, label) {
+    const bar = $('#p-bar');
+    if (fraction == null) {
+      bar.classList.add('indeterminate');
+      bar.firstElementChild.style.width = '';
+    } else {
+      bar.classList.remove('indeterminate');
+      bar.firstElementChild.style.width = Math.round(Math.max(0, Math.min(1, fraction)) * 100) + '%';
+    }
+    if (label) $('#p-stage').textContent = label;
+  }
+
+  function reset() {
+    clearTimeout(state.pollTimer);
+    state.jobId = null; state.segments = []; state.xhr = null;
+    store.set(null);
+    $('#file').value = '';
+    $('#p-preview').hidden = true;
+    $('#p-preview').textContent = '';
+    showUploadError('');
+  }
+
+  // ---------- config ----------
+  fetch('/api/config').then(r => r.ok ? r.json() : null).then(cfg => {
+    if (cfg && cfg.max_upload_mb) { state.maxMb = cfg.max_upload_mb; $('#max-mb').textContent = cfg.max_upload_mb; }
+  }).catch(() => {});
+
+  // ---------- upload ----------
+  function startUpload(file) {
+    if (!file) return;
+    if (file.size === 0) return showUploadError('That file is empty.');
+    if (file.size > state.maxMb * 1024 * 1024) {
+      return showUploadError(`That file is ${(file.size / 1048576).toFixed(0)} MB. The limit is ${state.maxMb} MB.`);
+    }
+    showUploadError('');
+    state.filename = file.name;
+    $('#p-file').textContent = file.name;
+    $('#p-preview').hidden = true;
+    show('progress');
+    setProgress(0, 'Uploading… 0%');
+
+    const lang = $('#lang').value;
+    const xhr = new XMLHttpRequest();
+    state.xhr = xhr;
+    xhr.open('POST', '/api/jobs' + (lang ? '?language=' + encodeURIComponent(lang) : ''));
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      const f = e.loaded / e.total;
+      setProgress(f, f >= 1 ? 'Upload complete. Starting…' : `Uploading… ${Math.floor(f * 100)}%`);
+    };
+    xhr.onload = () => {
+      state.xhr = null;
+      let body = null;
+      try { body = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status === 201 && body && body.id) {
+        state.jobId = body.id;
+        store.set(body.id);
+        setProgress(null, 'Waiting to start…');
+        poll();
+      } else if (xhr.status === 401) {
+        showUploadError('Your session needs the password again. Refresh the page and sign in.');
+      } else {
+        showUploadError((body && body.detail) || `Upload failed (HTTP ${xhr.status}).`);
+      }
+    };
+    xhr.onerror = () => { state.xhr = null; showUploadError('Upload failed. Check your connection and try again.'); };
+    xhr.onabort = () => { state.xhr = null; };
+    xhr.send(file);
+  }
+
+  // ---------- polling ----------
+  async function poll() {
+    const id = state.jobId;
+    if (!id) return;
+    let job;
+    try {
+      const r = await fetch('/api/jobs/' + id, { cache: 'no-store' });
+      if (r.status === 404) { reset(); return showUploadError('That transcript has expired or was removed.'); }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      job = await r.json();
+    } catch {
+      if (state.jobId === id) state.pollTimer = setTimeout(poll, 3000);
+      return;
+    }
+    if (state.jobId !== id) return; // cancelled meanwhile
+
+    state.filename = job.filename;
+    $('#p-file').textContent = job.filename;
+
+    switch (job.status) {
+      case 'queued':
+        setProgress(null, job.queue_position > 1
+          ? `Waiting in line: ${job.queue_position - 1} ahead of you…`
+          : 'Waiting to start…');
+        break;
+      case 'extracting':
+        setProgress(null, 'Extracting audio… (the video is deleted right after this)');
+        break;
+      case 'transcribing': {
+        const pct = Math.floor((job.progress || 0) * 100);
+        setProgress(job.progress || 0, `Transcribing… ${pct}%` + (job.language ? ` · ${langName(job.language)}` : ''));
+        if (job.segments.length) {
+          const pv = $('#p-preview');
+          const atBottom = pv.scrollHeight - pv.scrollTop - pv.clientHeight < 24;
+          pv.hidden = false;
+          pv.textContent = job.segments.map(s => s.text).join(' ');
+          if (atBottom) pv.scrollTop = pv.scrollHeight;
+        }
+        break;
+      }
+      case 'done':
+        return showResult(job);
+      case 'error':
+        reset();
+        return showUploadError(job.error || 'Something went wrong.');
+    }
+    state.pollTimer = setTimeout(poll, 1500);
+  }
+
+  $('#cancel').addEventListener('click', () => {
+    if (state.xhr) state.xhr.abort();
+    if (state.jobId) fetch('/api/jobs/' + state.jobId, { method: 'DELETE' }).catch(() => {});
+    reset();
+  });
+
+  // ---------- result ----------
+  function langName(code) {
+    try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) || code; } catch { return code; }
+  }
+
+  function showResult(job) {
+    state.segments = job.segments || [];
+    $('#r-file').textContent = job.filename;
+    const words = state.segments.reduce((n, s) => n + s.text.split(/\s+/).filter(Boolean).length, 0);
+    const bits = [];
+    if (job.language) bits.push(langName(job.language));
+    if (job.duration) bits.push(clock(job.duration) + ' long');
+    bits.push(words.toLocaleString() + ' words');
+    $('#r-meta').textContent = bits.join(' · ');
+    renderTranscript();
+    show('result');
+  }
+
+  function pad(n, w = 2) { return String(Math.floor(n)).padStart(w, '0'); }
+  function clock(sec) {
+    const h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+    return (h >= 1 ? Math.floor(h) + ':' : '') + pad(m) + ':' + pad(s);
+  }
+  function stamp(sec, sep) {
+    const ms = Math.round(sec * 1000);
+    return pad(ms / 3600000) + ':' + pad((ms % 3600000) / 60000) + ':' + pad((ms % 60000) / 1000) + sep + pad(ms % 1000, 3);
+  }
+
+  function asParagraphs(segs) {
+    const paras = [];
+    let cur = [], len = 0;
+    segs.forEach((s, i) => {
+      const prev = segs[i - 1];
+      const gap = prev ? s.start - prev.end : 0;
+      if (cur.length && (gap > 2 || (len > 450 && /[.!?]["')\]]?$/.test(prev.text)))) {
+        paras.push(cur.join(' ')); cur = []; len = 0;
+      }
+      cur.push(s.text); len += s.text.length;
+    });
+    if (cur.length) paras.push(cur.join(' '));
+    return paras.join('\n\n');
+  }
+
+  function asTimestamped(segs) {
+    return segs.map(s => `[${clock(s.start)}] ${s.text}`).join('\n');
+  }
+
+  function renderTranscript() {
+    const ta = $('#transcript');
+    const withTs = $('#ts').checked;
+    ta.classList.toggle('mono', withTs);
+    ta.value = withTs ? asTimestamped(state.segments) : asParagraphs(state.segments);
+    ta.placeholder = state.segments.length ? '' : 'No speech was detected in this video.';
+  }
+  $('#ts').addEventListener('change', renderTranscript);
+
+  function toSrt(segs) {
+    return segs.map((s, i) => `${i + 1}\n${stamp(s.start, ',')} --> ${stamp(s.end, ',')}\n${s.text}\n`).join('\n');
+  }
+  function toVtt(segs) {
+    return 'WEBVTT\n\n' + segs.map(s => `${stamp(s.start, '.')} --> ${stamp(s.end, '.')}\n${s.text}\n`).join('\n');
+  }
+
+  function download(ext) {
+    const base = (state.filename || 'transcript').replace(/\.[^.]+$/, '') || 'transcript';
+    let text, type = 'text/plain';
+    if (ext === 'srt') { text = toSrt(state.segments); type = 'application/x-subrip'; }
+    else if (ext === 'vtt') { text = toVtt(state.segments); type = 'text/vtt'; }
+    else text = $('#transcript').value; // .txt keeps the user's edits
+    const url = URL.createObjectURL(new Blob([text], { type: type + ';charset=utf-8' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: `${base}.${ext}` });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  document.querySelectorAll('[data-dl]').forEach(b => b.addEventListener('click', () => download(b.dataset.dl)));
+
+  $('#copy').addEventListener('click', async () => {
+    const ta = $('#transcript');
+    const btn = $('#copy');
+    let ok = false;
+    try { await navigator.clipboard.writeText(ta.value); ok = true; } catch {
+      ta.focus(); ta.select();
+      try { ok = document.execCommand('copy'); } catch {}
+    }
+    const label = btn.querySelector('span');
+    label.textContent = ok ? 'Copied!' : 'Press Ctrl+C to copy';
+    if (ok) btn.classList.add('copied');
+    setTimeout(() => { label.textContent = 'Copy transcript'; btn.classList.remove('copied'); }, 1800);
+  });
+
+  $('#again').addEventListener('click', () => {
+    if (state.jobId) fetch('/api/jobs/' + state.jobId, { method: 'DELETE' }).catch(() => {});
+    reset();
+    show('upload');
+  });
+
+  // ---------- file picking ----------
+  const drop = $('#drop'), input = $('#file');
+  drop.addEventListener('click', () => input.click());
+  drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+  input.addEventListener('change', () => startUpload(input.files[0]));
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'dragend'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('over')));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault(); drop.classList.remove('over');
+    if (e.dataTransfer.files.length) startUpload(e.dataTransfer.files[0]);
+  });
+  // Don't let a stray drop outside the zone navigate away from the page.
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+
+  // ---------- resume after refresh ----------
+  const saved = store.get();
+  if (saved) {
+    state.jobId = saved;
+    $('#p-file').textContent = '';
+    show('progress');
+    setProgress(null, 'Reconnecting…');
+    poll();
+  }
+})();
+</script>
+</body>
+</html>
