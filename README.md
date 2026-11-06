@@ -8,6 +8,7 @@ Live at **https://vidscript.samuelgelacio.io** (password protected).
 - A transcript box you can edit, a one-click **Copy** button, and downloads as **.txt / .srt / .vtt**
 - An optional timestamps view, and automatic language detection (or pick the language for better accuracy)
 - Runs entirely on your own server with [faster-whisper](https://github.com/SYSTRAN/faster-whisper): no API keys, no per-minute costs, and nothing leaves the VPS
+- A **Minutes** tab that turns a transcript into editable Minutes of Meeting using your own Claude or ChatGPT subscription
 
 ## How files are handled
 
@@ -26,11 +27,26 @@ upload ──► disk ──► ffmpeg extracts 16 kHz mono audio ──► VIDE
 - The working folder is wiped on startup, and a cleanup task removes anything left over.
 - "Transcribe another" and "Cancel" delete the job on the server immediately.
 
+## Minutes of Meeting
+
+The **Minutes** tab writes formal minutes (in English) from a transcript, using your existing Claude or ChatGPT subscription. No API key or extra cost is involved: a server can't call a chat subscription, so this works by copy and paste.
+
+1. On a finished transcript, click **Create minutes →**, or paste any transcript into the Minutes tab. The title and date are filled in from the file name when possible. Adding known attendees helps get names right.
+2. Click **Copy prompt & open Claude** (or ChatGPT). This copies a ready-made prompt with the transcript included. Paste it into the new chat and send it.
+3. Copy the reply with the chat's Copy button and paste it into step 3. It becomes a formatted document.
+4. Edit it directly. The toolbar has bold, italic, underline, headings, lists, undo and **+ Action row**. Then click **Copy minutes** and paste into Word, Google Docs or an email, keeping the headings, lists and the bordered action-items table.
+
+Structure: title, date, attendees, prepared by, summary, discussion by topic, decisions, an action-items table (#, action, owner, due date), open issues, next meeting. The prompt tells the AI to write "Not stated" instead of inventing names, dates or numbers.
+
+The draft autosaves **in your browser only**: nothing about the minutes is sent to or stored on the VidScript server. Pasted content is sanitized (only basic formatting tags are kept). "Start over" clears the draft.
+
 ## Project layout
 
 ```
 app/main.py               FastAPI backend (upload, job queue, ffmpeg + Whisper)
-app/static/index.html     The whole frontend (no build step)
+app/static/index.html     Frontend page: Transcript and Minutes tabs (no build step)
+app/static/minutes.js     Minutes of Meeting: prompt, paste import, editor, formatted copy
+app/static/vendor/        Bundled marked 12.0.2 (Markdown) and DOMPurify 3.1.6 (sanitizing)
 Dockerfile                Python 3.12 slim + ffmpeg
 docker-compose.yml        Binds to 127.0.0.1:8010 for nginx to proxy
 deploy/nginx/…conf        nginx site for vidscript.samuelgelacio.io

@@ -147,11 +147,78 @@
   }
   footer { margin-top: 28px; color: var(--muted); font-size: .85rem; text-align: center; }
 
+  /* Tabs */
+  .tabs {
+    display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 18px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .tabs button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: 7px 18px; border-radius: 9px; }
+  .tabs button:hover { color: var(--text); background: transparent; }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); border-color: var(--border); box-shadow: var(--shadow); }
+
+  /* Minutes */
+  .step { display: flex; align-items: center; gap: 10px; font-size: 1rem; margin: 26px 0 10px; }
+  .step:first-child { margin-top: 0; }
+  .step .num {
+    display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none;
+    border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: .8rem; font-weight: 700;
+  }
+  .step + .note { margin: -4px 0 12px; }
+  .fields { display: grid; grid-template-columns: 1fr 190px; gap: 10px 12px; margin-bottom: 12px; }
+  .fields label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
+  .fields .wide { grid-column: 1 / -1; }
+  input[type="text"], input[type="date"] {
+    font: inherit; font-size: .95rem; color: var(--text); width: 100%;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  }
+  input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  #m-transcript { min-height: 180px; }
+  .count { margin-top: 6px; }
+  .status { margin-top: 10px; font-size: .9rem; color: var(--muted); }
+  .status.ok { color: var(--success); }
+  .status.bad { color: var(--danger); }
+  .status a { color: var(--accent); }
+  .paste {
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    min-height: 96px; padding: 18px; border: 2px dashed var(--border); border-radius: 12px;
+    background: var(--surface-2); color: var(--muted); cursor: text; caret-color: transparent;
+  }
+  .paste:focus { outline: none; border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+  .paste-actions { margin-top: 10px; }
+  .ed-toolbar {
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 6px;
+    border: 1px solid var(--border); border-bottom: none; border-radius: 10px 10px 0 0; background: var(--surface-2);
+  }
+  .ed-toolbar button { padding: 5px 10px; min-width: 34px; justify-content: center; }
+  .ed-toolbar .sep { width: 1px; background: var(--border); margin: 3px 4px; }
+  .doc {
+    min-height: 420px; padding: 24px 28px; overflow-x: auto;
+    border: 1px solid var(--border); border-radius: 0 0 10px 10px; background: var(--surface);
+    line-height: 1.6; word-wrap: break-word;
+  }
+  .doc:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .doc h1 { font-size: 1.45rem; line-height: 1.3; margin: 0 0 12px; }
+  .doc h2 { font-size: 1.15rem; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+  .doc h3 { font-size: 1rem; margin: 16px 0 6px; }
+  .doc h4 { font-size: .95rem; margin: 12px 0 4px; }
+  .doc p { margin: 0 0 10px; }
+  .doc ul, .doc ol { margin: 0 0 10px; padding-left: 24px; }
+  .doc li { margin: 2px 0; }
+  .doc blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted); }
+  .doc table { border-collapse: collapse; width: 100%; margin: 6px 0 14px; font-size: .95rem; }
+  .doc th, .doc td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; min-width: 40px; }
+  .doc th { background: var(--surface-2); font-weight: 600; }
+  .doc hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
   @media (max-width: 560px) {
     .wrap { padding-top: 28px; }
     .card { padding: 18px; }
     textarea { min-height: 300px; }
     .toolbar > .row { width: 100%; }
+    .fields { grid-template-columns: 1fr; }
+    .doc { padding: 16px; min-height: 320px; }
+    .tabs { display: flex; }
+    .tabs button { flex: 1; justify-content: center; }
   }
 </style>
 </head>
@@ -165,6 +232,12 @@
     <p>Upload a video and get a transcript you can copy. Your video is deleted as soon as its audio is extracted.</p>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button id="tabbtn-transcript" type="button" role="tab" aria-selected="true" aria-controls="tab-transcript">Transcript</button>
+    <button id="tabbtn-minutes" type="button" role="tab" aria-selected="false" aria-controls="tab-minutes">Minutes</button>
+  </nav>
+
+  <div id="tab-transcript" role="tabpanel" aria-labelledby="tabbtn-transcript">
   <!-- Upload -->
   <section id="view-upload" class="card">
     <div id="drop" class="drop" role="button" tabindex="0" aria-label="Choose a video file to transcribe">
@@ -229,12 +302,84 @@
         <button type="button" data-dl="txt">.txt</button>
         <button type="button" data-dl="srt">.srt</button>
         <button type="button" data-dl="vtt">.vtt</button>
+        <button id="to-minutes" type="button">Create minutes &rarr;</button>
         <button id="again" type="button">Transcribe another</button>
       </div>
     </div>
   </section>
+  </div>
 
-  <footer>Transcripts are kept on the server for 1 hour, then deleted. Videos are never stored.</footer>
+  <!-- Minutes of Meeting -->
+  <div id="tab-minutes" role="tabpanel" aria-labelledby="tabbtn-minutes" hidden>
+    <section id="m-setup" class="card">
+      <h2 class="step"><span class="num">1</span> Transcript</h2>
+      <div class="fields">
+        <label>Meeting title <input id="m-title" type="text" placeholder="e.g. Refrigerants weekly meeting" autocomplete="off"></label>
+        <label>Date <input id="m-date" type="date"></label>
+        <label class="wide">Known attendees (optional) <input id="m-attendees" type="text" placeholder="e.g. Samuel, Ana, Mark: helps get names right" autocomplete="off"></label>
+      </div>
+      <textarea id="m-transcript" spellcheck="false" aria-label="Transcript for the minutes" placeholder="Paste a transcript here, or click &ldquo;Create minutes&rdquo; on a finished transcript."></textarea>
+      <div id="m-count" class="note count"></div>
+
+      <h2 class="step"><span class="num">2</span> Get a draft from your AI</h2>
+      <p class="note">This copies a ready-made minutes prompt with the transcript included. Paste it into a new chat and send it.</p>
+      <div class="row">
+        <button type="button" class="primary" data-prompt="claude">Copy prompt &amp; open Claude</button>
+        <button type="button" data-prompt="chatgpt">Copy prompt &amp; open ChatGPT</button>
+        <button type="button" class="ghost" data-prompt="">Copy prompt only</button>
+      </div>
+      <div id="m-prompt-status" class="status" aria-live="polite"></div>
+
+      <h2 class="step"><span class="num">3</span> Paste the reply</h2>
+      <p class="note">In Claude or ChatGPT, click the reply's Copy button, then paste here.</p>
+      <div id="m-paste" class="paste" contenteditable="true" role="textbox" aria-label="Paste the AI reply here" spellcheck="false">Click here and press Ctrl+V (&#8984;V on Mac)</div>
+      <div class="row paste-actions">
+        <button id="m-paste-btn" type="button">Paste from clipboard</button>
+        <button id="m-back-to-doc" type="button" class="ghost" hidden>Back to my minutes</button>
+      </div>
+      <div id="m-paste-status" class="status" aria-live="polite"></div>
+    </section>
+
+    <section id="m-editor" class="card" hidden>
+      <div class="row result-head">
+        <div>
+          <div class="file">Minutes of Meeting</div>
+          <div class="meta">Click anywhere in the document to edit it.</div>
+        </div>
+        <button id="m-copy" class="primary" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+          <span>Copy minutes</span>
+        </button>
+      </div>
+      <div class="ed-toolbar" role="toolbar" aria-label="Formatting">
+        <button type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" data-cmd="formatBlock:h2" title="Heading">Heading</button>
+        <button type="button" data-cmd="formatBlock:h3" title="Subheading">Subheading</button>
+        <button type="button" data-cmd="formatBlock:p" title="Normal text">Normal</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" data-cmd="insertUnorderedList" title="Bullet list" aria-label="Bullet list">&bull; List</button>
+        <button type="button" data-cmd="insertOrderedList" title="Numbered list" aria-label="Numbered list">1. List</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" data-cmd="undo" title="Undo (Ctrl+Z)" aria-label="Undo">&#8630;</button>
+        <button type="button" data-cmd="redo" title="Redo (Ctrl+Y)" aria-label="Redo">&#8631;</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" id="m-add-row" title="Add a row to the Action Items table">+ Action row</button>
+      </div>
+      <div id="m-doc" class="doc" contenteditable="true" spellcheck="true" aria-label="Minutes document"></div>
+      <div class="row toolbar">
+        <span id="m-saved" class="note" aria-live="polite"></span>
+        <div class="row">
+          <button id="m-redo-steps" type="button">Paste a new reply</button>
+          <button id="m-reset" type="button" class="ghost">Start over</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>Transcripts are kept on the server for 1 hour, then deleted. Videos are never stored. Minutes drafts are saved only in this browser.</footer>
 </div>
 
 <script>
@@ -483,6 +628,28 @@
     setTimeout(() => { label.textContent = 'Copy transcript'; btn.classList.remove('copied'); }, 1800);
   });
 
+  // ---------- tabs + hand-off to Minutes ----------
+  const TAB_KEY = 'vidscript.tab';
+  function showTab(name) {
+    for (const t of ['transcript', 'minutes']) {
+      $('#tab-' + t).hidden = t !== name;
+      $('#tabbtn-' + t).setAttribute('aria-selected', String(t === name));
+    }
+    try { localStorage.setItem(TAB_KEY, name); } catch {}
+  }
+  $('#tabbtn-transcript').addEventListener('click', () => showTab('transcript'));
+  $('#tabbtn-minutes').addEventListener('click', () => showTab('minutes'));
+  window.VidScript = { showTab };
+
+  $('#to-minutes').addEventListener('click', () => {
+    // Use the textarea (keeps any edits) unless it's showing timestamps.
+    const text = $('#ts').checked ? asParagraphs(state.segments) : $('#transcript').value;
+    const title = (state.filename || '').replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim();
+    window.dispatchEvent(new CustomEvent('vidscript:minutes', { detail: { transcript: text, title } }));
+    showTab('minutes');
+    window.scrollTo({ top: 0 });
+  });
+
   $('#again').addEventListener('click', () => {
     if (state.jobId) fetch('/api/jobs/' + state.jobId, { method: 'DELETE' }).catch(() => {});
     reset();
@@ -513,7 +680,13 @@
     setProgress(null, 'Reconnecting…');
     poll();
   }
+  let lastTab = null;
+  try { lastTab = localStorage.getItem(TAB_KEY); } catch {}
+  if (lastTab === 'minutes') showTab('minutes');
 })();
 </script>
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/purify.min.js"></script>
+<script src="minutes.js?v=1"></script>
 </body>
 </html>
